@@ -9,19 +9,26 @@ import json
 import requests
 import signal
 
-# ===================== AYARLAR =====================
-RTMP_URL = "rtmp://ssh101.bozztv.com:1935/ssh101"
-STREAM_KEY = "inbox1"
+# ===================== AYARLAR (ortam değişkenlerinden okunur) =====================
+# Her kanal kendi .yml dosyasında bu değerleri farklı verir; script'in kendisi
+# 4 kanal için de aynı kalır.
+
+RTMP_URL = os.getenv("RTMP_URL", "rtmp://ssh101.bozztv.com:1935/ssh101")
+STREAM_KEY = os.getenv("STREAM_KEY", "inbox1")
 RTMP_SERVER = f"{RTMP_URL}/{STREAM_KEY}"
 
-CHANNEL_NAME = "kanal1"
+CHANNEL_NAME = os.getenv("CHANNEL_NAME", "kanal1")
 STATE_FILE_NAME = f"state_{CHANNEL_NAME}.json"
 
-M3U_FILE = "pars.m3u"
-LOGO_FILE = "1787069925822.png"
+M3U_FILE = os.getenv("M3U_FILE", "pars.m3u")
+LOGO_FILE = os.getenv("LOGO_FILE", "1787069925822.png")
 
-GIST_ID = "34df90330e4b0daeed9a5b516c1c368d"
+GIST_ID = os.getenv("GIST_ID", "34df90330e4b0daeed9a5b516c1c368d")
 GH_TOKEN = os.getenv("GH_TOKEN", "")
+
+if not GH_TOKEN:
+    print("❌ HATA: GH_TOKEN tanımlı değil! Workflow secret'ı eksik.", flush=True)
+    sys.exit(1)
 
 STREAM_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
 
