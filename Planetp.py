@@ -15,8 +15,8 @@ STREAM_KEY = "premium"
 RTMP_SERVER = f"{RTMP_URL}/{STREAM_KEY}"
 
 # M3U ve Logo Bağlantıları
-M3U_URL = "https://raw.githubusercontent.com/ibrahirahim/png/refs/heads/main/Planetp.m3u"
-LOGO_URL = "https://raw.githubusercontent.com/ibrahirahim/png/refs/heads/main/1787225007657.png"
+M3U_URL = "https://raw.githubusercontent.com/ino8090/8031/refs/heads/main/Planetp.m3u"
+LOGO_URL = "https://raw.githubusercontent.com/ino8090/3152/refs/heads/main/1787225007657.png"
 
 GIST_ID = "34df90330e4b0daeed9a5b516c1c368d"
 
