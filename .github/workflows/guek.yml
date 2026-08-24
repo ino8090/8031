@@ -1,30 +1,25 @@
-name: güek
+name: Kanal 1 Yayin
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  yayin:
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
+  stream:
+    runs-on: self-hosted
+
     steps:
-    - name: 📥 Depoyu klonla
-      uses: actions/checkout@v4
-      
-    - name: 🐍 Python kurulumu
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        
-    - name: 📦 FFmpeg ve Kurulumlar
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends ffmpeg
-        pip install requests
-        
-    - name: 🚀 Yayını başlat
-      env:
-        GH_TOKEN: ${{ secrets.GH_TOKEN }}
-      run: python inbox.py
+      - name: Kodları çek
+        uses: actions/checkout@v4
+
+      - name: Bağımlılıkları kur
+        run: pip install requests --break-system-packages || pip install requests
+
+      - name: Yayını başlat
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          CHANNEL_NAME: "kanal1"
+          GIST_ID: "34df90330e4b0daeed9a5b516c1c368d"
+          STREAM_KEY: "inbox1"
+          M3U_FILE: "pars.m3u"
+          LOGO_FILE: "1787069925822.png"
+        run: exec python3 inbox1.py
