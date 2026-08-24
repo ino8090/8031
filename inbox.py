@@ -25,8 +25,14 @@ GH_TOKEN = os.getenv("GH_TOKEN", "")
 
 STREAM_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
 
-GLOBAL_CURRENT_INDEX = 0
-GLOBAL_CURRENT_SECONDS = 0
+# Sinyal işleyicisi ve ana döngünün paylaştığı durum
+_state = {
+    "process": None,
+    "current_index": 0,
+    "current_seconds": 0,
+    "shutting_down": False,
+}
+
 
 def get_gist_state():
     if not GIST_ID:
@@ -42,41 +48,81 @@ def get_gist_state():
                 data = json.loads(content)
                 idx = int(data.get("last_index", 0))
                 sec = int(data.get("last_seconds", 0))
-                print(f"✅ GIST OKUNDU -> Film Index: {idx}, Saniye: {sec}")
+                print(f"✅ GIST OKUNDU -> Film Index: {idx}, Saniye: {sec}", flush=True)
                 return idx, sec
+        else:
+            print(f"❌ Gist okuma HTTP {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ Gist okuma hatası: {e}")
+        print(f"⚠️ Gist okuma hatası: {e}", flush=True)
     return 0, 0
 
-def update_gist_state(index, seconds):
+
+def update_gist_state(index, seconds, retries=2):
+    """Gist'e yazar. Başarısız olursa kısa bir bekleme ile tekrar dener."""
     if not GIST_ID or not GH_TOKEN:
-        return
-    try:
-        url = f"https://api.github.com/gists/{GIST_ID}"
-        headers = {
-            "Authorization": f"token {GH_TOKEN}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        payload = {
-            "files": {
-                STATE_FILE_NAME: {
-                    "content": json.dumps({"last_index": int(index), "last_seconds": int(seconds)})
-                }
+        print("⚠️ GIST_ID veya GH_TOKEN eksik, kaydedilemedi!", flush=True)
+        return False
+    url = f"https://api.github.com/gists/{GIST_ID}"
+    headers = {
+        "Authorization": f"token {GH_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    payload = {
+        "files": {
+            STATE_FILE_NAME: {
+                "content": json.dumps({"last_index": int(index), "last_seconds": int(seconds)})
             }
         }
-        res = requests.patch(url, headers=headers, json=payload, timeout=5)
-        if res.status_code == 200:
-            print(f"💾 GIST YAZILDI -> Index: {index}, Saniye: {int(seconds)}")
-    except Exception as e:
-        print(f"⚠️ Gist yazma hatası: {e}")
+    }
+    for attempt in range(1, retries + 2):
+        try:
+            res = requests.patch(url, headers=headers, json=payload, timeout=6)
+            if res.status_code == 200:
+                print(f"💾 GIST YAZILDI -> Index: {index}, Saniye: {int(seconds)} (deneme {attempt})", flush=True)
+                return True
+            print(f"⚠️ Gist yazma HTTP {res.status_code} (deneme {attempt})", flush=True)
+        except Exception as e:
+            print(f"⚠️ Gist yazma hatası: {e} (deneme {attempt})", flush=True)
+        time.sleep(1)
+    print("❌ Gist yazma tüm denemelerde başarısız oldu!", flush=True)
+    return False
+
+
+def _kill_ffmpeg():
+    proc = _state["process"]
+    if proc and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+                proc.wait(timeout=3)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
 
 def handle_shutdown(signum, frame):
-    print(f"\n🛑 Kapanış sinyali alındı. Son durum yazılıyor: Saniye {GLOBAL_CURRENT_SECONDS}")
-    update_gist_state(GLOBAL_CURRENT_INDEX, GLOBAL_CURRENT_SECONDS)
+    if _state["shutting_down"]:
+        os._exit(1)
+    _state["shutting_down"] = True
+
+    idx = _state["current_index"]
+    sec = _state["current_seconds"]
+    print(f"\n🛑 Kapanış sinyali alındı (signal={signum}). Son durum yazılıyor: Index {idx}, Saniye {sec}", flush=True)
+
+    _kill_ffmpeg()
+    update_gist_state(idx, sec)
+
+    print("✅ Kapanış tamamlandı, çıkılıyor.", flush=True)
     sys.exit(0)
+
 
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
+
 
 def get_m3u_playlist(m3u_file_path):
     try:
@@ -95,43 +141,45 @@ def get_m3u_playlist(m3u_file_path):
                     current_title = "Film Yayini"
             return playlist
     except Exception as e:
-        print(f"⚠️ M3U okuma hatası: {e}")
+        print(f"⚠️ M3U okuma hatası: {e}", flush=True)
     return []
+
 
 def check_logo():
     return os.path.exists(LOGO_FILE) and os.path.getsize(LOGO_FILE) > 0
 
+
 def escape_ffmpeg_text(text):
     return text.replace(":", "\\:").replace("'", "").replace("%", "\\%")
 
+
 def start_m3u_stream():
-    global GLOBAL_CURRENT_INDEX, GLOBAL_CURRENT_SECONDS
     has_logo = check_logo()
-    
+
     current_index, last_seconds = get_gist_state()
-    GLOBAL_CURRENT_INDEX = current_index
-    GLOBAL_CURRENT_SECONDS = last_seconds
+    _state["current_index"] = current_index
+    _state["current_seconds"] = last_seconds
 
     while True:
         playlist = get_m3u_playlist(M3U_FILE)
         if not playlist:
             time.sleep(10)
             continue
-            
+
         if current_index >= len(playlist):
             current_index = 0
             last_seconds = 0
 
-        GLOBAL_CURRENT_INDEX = current_index
-        GLOBAL_CURRENT_SECONDS = last_seconds
+        _state["current_index"] = current_index
+        _state["current_seconds"] = last_seconds
 
         target_stream_url, film_title = playlist[current_index]
         clean_title = escape_ffmpeg_text(film_title)
-        
-        print("=" * 60)
-        print(f"🎬 Oynatılan Film : {film_title}")
-        print(f"⏱️ Başlangıç Saniyesi: {last_seconds}")
-        print("=" * 60)
+
+        print("=" * 60, flush=True)
+        print(f"🎬 Oynatılan Film : {film_title}", flush=True)
+        print(f"⏱️ Başlangıç Saniyesi: {last_seconds}", flush=True)
+        print("=" * 60, flush=True)
 
         text_filter = (
             f"drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
@@ -182,24 +230,29 @@ def start_m3u_stream():
             RTMP_SERVER
         ])
 
+        # start_new_session=True: sinyal önce Python'a gelsin, ffmpeg'i kendimiz
+        # düzgünce kapatalım (aksi halde ikisi aynı anda öldürülüp ffmpeg'in
+        # muxer'ı yarım kalabilir ve/veya kapanış kodu hiç çalışmayabilir).
         process = subprocess.Popen(
             command,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
         )
+        _state["process"] = process
 
         start_time = time.time()
         start_offset = last_seconds
         last_save_time = time.time()
 
-        # Süreç yaşadığı sürece Python kendi zamanını hesaplar
         while process.poll() is None:
             time.sleep(1)
             elapsed = int(time.time() - start_time)
-            GLOBAL_CURRENT_SECONDS = start_offset + elapsed
+            _state["current_seconds"] = start_offset + elapsed
 
-            if time.time() - last_save_time >= 10:
-                update_gist_state(current_index, GLOBAL_CURRENT_SECONDS)
+            # Kayıt aralığı kısaltıldı: kayıp penceresi en fazla ~5 sn
+            if time.time() - last_save_time >= 5:
+                update_gist_state(current_index, _state["current_seconds"])
                 last_save_time = time.time()
 
         if process.returncode == 0:
@@ -207,10 +260,14 @@ def start_m3u_stream():
             last_seconds = 0
             update_gist_state(current_index, 0)
         else:
-            last_seconds = GLOBAL_CURRENT_SECONDS
+            last_seconds = _state["current_seconds"]
             update_gist_state(current_index, last_seconds)
 
+        _state["current_index"] = current_index
+        _state["current_seconds"] = last_seconds
+
         time.sleep(3)
+
 
 if __name__ == "__main__":
     start_m3u_stream()
