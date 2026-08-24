@@ -21,7 +21,7 @@ LOGO_URL = "https://raw.githubusercontent.com/ino8090/3152/refs/heads/main/17872
 GIST_ID = "34df90330e4b0daeed9a5b516c1c368d"
 
 # YENİ TOKENİNİ AŞAĞIDAKİ ALANA YAZ (Buraya mesaj olarak atma!)
-GH_TOKEN = os.getenv("GH_TOKEN", "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")
+GH_TOKEN = os.getenv("GH_TOKEN", "")
 
 STREAM_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
